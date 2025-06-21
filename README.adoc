@@ -1,0 +1,199 @@
+# CMake project with multi file C++ projects
+Actually each project done using CMake is in one and single file, although CMake can let you do more than that and it is also possible to make project with several files
+:toc:
+:sectnums:
+
+== Introduction
+
+A C++ program isn't done with only one file, although it's done using several files such as headers and source as well as libraries. That means we will have to give it to CMake to build and compile your project.
+
+=== Stuctures
+
+In practice, while you are making a project, you will (in practice) create a bunch of folder to put all the files that are identical in one place, such as include or sources.
+
+For instance, a common practice in a C++ project is making use of the following folder structure:
+
+```
+project
+-----> include/
+-----> src/
+```
+
+When you decide to make use of that kind of structure, you will have to tell it to CMake that your folder structure isn't something more than a `main.cpp` file.
+
+=== CMakeLists update
+
+From now on (Ep002 ... Ep004) we just had only one file that was the `main.cpp`, now it will change a bit in order to follow the folder structured discussed above.
+
+Here is what we need to do:
+
+* Tell CMake how it can find our header files by using the command named `target_include_directories()`
+
+==== target_include_directories
+
+This command let you specifies include directories to use when compiling a given target. The named `<target>` must have been created by a command such as `add_executable` or `add_library` and must NOT BE an ALIAS target
+
+===== Example
+
+The command below is the general command of the `target_include_directories` to specify where CMake has to look for the include of your project.
+```cmake
+target_include_directories(<target> 
+        [SYSTEM] [AFTER|BEFORE]
+        <INTERFACE|PUBLIC|PRIVATE> [items1...]
+        [<INTERFACE|PUBLIC|PRIVATE> [items1...]...]
+)
+```
+By using `AFTER` or `BEFORE` explicitly, you can select between appending or prepending independant of the default.
+
+The `INTERFACE`, `PUBLIC` and `PRIVATE` keywords are required to specify the scope of the following arguments. `PRIVATE` and `PUBLIC` items will populate the `INCLUDE_DIRECTORIES` property of the `target`. `PUBLIC` and `INTERFACE` items will populate the `INTERFACE_INCLUDE_DIRECTORIES` property of the `<target>`. The following arguments specify include directories.
+
+Repeated calls for the same `<target>` append items in the order called.
+
+If `<SYSTEM>` is specified, the compiler will be told the directories are meant as system include directories on some platforms. This may have effects such as suppressing warnings or skipping the contained headers in dependency calculations. Additionnally, system include directories are searched after normal include directories reardless of the order specified.
+
+If `<SYSTEM>` is used together with `PUBLIC` or `INTERFACE`, the `INTERFACE_SYSTEM_INCLUDE_DIRECTORIES` target property will be populated with the specified directories.
+
+Specified include directories may be absolute paths or relative paths. A relative paths will be interpreted as relative to the current source directory (i.e CMAKE_CURRENT_SOURCE_DIR) and converted to an absolute path before storing it in the associated target property if the path starts with a generator expression, it will always be assumed to be an absolute path and will be used unmodified.
+
+Include directories usage requirements commonly differ between the build-tree and the install-tree. The `BUILD_INTERFACE` and `INSTALL_INTERFACE` generator expressions can be used to describe separate usage requirements based on the usage location. Relative paths are allowed within the `INSTALL_INTERFACE` expression and are interpreted as relative to the installation prefix. Relative paths should not be used in `BUILD_INTERFACE` expressions because they will not be converted to absolute,
+
+Here is another example:
+```cmake
+target_include_directories(mylib PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/mylib>
+  $<INSTALL_INTERFACE:include/mylib>  # <prefix>/include/mylib
+)
+```
+
+==== Alias target
+
+An `ALIAS` target is a name which may be used interchangeably with a binary target-name in read-only context. A primary use-case for `ALIAS` targets is for example or unit test executables accompanying a library, which may be part of the same buildsystem or built separatly based on user configuration.
+
+```cmake
+add_library(lib1 lib1.cpp)
+install(TARGETS lib1 EXPORT lib1Export ${dest_args})
+install(EXPORT lib1Export NAMESPACE Upstream:: ${other_args})
+
+add_library(Upstream::lib1 ALIAS lib1)
+```
+In another directory, we can link unconditionally to the `Upstream::lib1` target, which may be an `IMPORTED` target from a package, or an `ALIAS` target if built as part of the same buildsystem.
+
+```cmake
+if (NOT TARGET Upstream::lib1)
+    find_package(lib1 REQUIRED)
+endif()
+add_executable(exe1 exe1.cpp)
+target_link_libraries(exe1 Upstream::lib1)
+```
+`ALIAS` target are not mutable, installable or exportable. They are entirely local to the buildsystem description. A name can be tested for whether it is an `ALIAS` name by reading the `ALIASED_TARGET` property from it:
+```cmake
+get_target_property(_aliased Upstream::lib1 ALIASED_TARGET)
+if (_aliased)
+    message(STATUS "The name Upstream::lib1 is an ALIAS for            ${_aliased}")
+endif()
+```
+
+If we come back to our previous `CMakeLists.txt` where we had this inside:
+
+```cmake
+cmake_minimum_required(VERSION 3.5)
+project(HelloApp
+        VERSION 0.0.1
+        DESCRIPTION "The leading hello world App"
+        LANGUAGES CXX)
+
+add_executable(HelloBinary main.cpp)
+target_compile_features(HelloBinary PRIVATE cxx_std_20)
+target_include_directories(HelloBinary PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+```
+
+**The command that we are interested in is the `target_include_directories` one.** 
+
+You can see that we specify the binary name (the one we specify using the `add_executable` or `add_library` commands), then we give it the folder where the include files are leaving to. 
+
+==== CMAKE_CURRENT_SOURCE_DIR
+
+The variable `CMAKE_CURRENT_SOURCE_DIR` is a variable that contains the path to the source directory currently being processed.
+
+When you run in `cmake -P` script mode, CMake sets the variable `CMAKE_BINARY_DIR`, `CMAKE_SOURCE_DIR`, `CMAKE_CURRENT_BINARY_DIR` and `CMAKE_CURRENT_SOURCE_DIR` to the current working directory.
+
+== Specifying source file
+
+Even though `CMake` isn't a compiler, there is a way to specify at `CMake` the source file it can set as compiled while generating the build,
+
+You can do so by making use of the `add_*` that is `add_executable` and `add_library` command, and you do so by doing something like this:
+
+```cmake
+...
+add_executable(HelloBinary main.cpp
+               src/dog.cpp
+               src/operations.cpp)
+...
+```
+
+So the command specified above will contains the following to be processed:
+
+. We specify the binary name, or the executable name
+. We specify the source file
+
+=== Specifying source file using globbing
+
+**Full disclosure:** I originally preferred thre globbing approach for its simplicity, but over the years, I have come to recognize that explicitly listing the files is less error-prone for large, multi-developer project.
+
+==== What is the globbing ?
+
+The globbing is a way to specify a list of elements (file in our case) using wildcard (such as `\*`) and get all the file with specific extension (for example: `*.cpp`.
+
+For example, the source file can be retrieved using this command as globbing:
+
+```cmake
+file(GLOB_RECURSE SRC_FILES src/*.cpp)
+add_executable(HelloBinary main.cpp ${SRC_FILE})
+```
+
+the `file(GLOB_RECURSE ...)` command is used here to get all the file with the extension marked as `.cpp`.
+
+==== GLOB_RECURSE
+
+As you may have noticed, the `file()` command will have the `GLOB_RECURSE` as first parameter, this mode is made to traverse all the subdirectories of the matched directory and match the files.
+
+Subdirectories that are symlinks are only traversed if `FLOW_SYMLINKS` is given or policy `CMP0009` isn't set ti `NEW`.
+
+By default `GLOB_RECURSE` omits directories from result list - setting `LIST_DIRECTORIES` to true adds directories to result list. If `FOLLOW_SYMLINKS` is given or policy `CMP0009` isn't set to `OLD` then `LIST_DIRECTORIES` treats symlinks as directories.
+
+===== Example of recursive globbing includes
+
+```cmake
+/dir/*.cpp - match all python files in /dir and subdir
+```
+
+==== Disadvantage of globbing
+
+The globbing will let you select all the file of a folder for their to be built, although it also create a lot of confusion.
+
+* It's easy to add new files as they are only listed in one place: on the disk. Not globbing creates duplication.
+* Your `CMakeLists.txt` file will be shorter. This is a big plus if you have lots of files. Not globbing cause to lose the `CMake` logic amongst huge lists of files.
+
+==== Advantage of using hardcoded file lists are
+
+* `CMake` will track the dependencies of a new file on disk correctly - if we use glov then files not globbed first time round, when you ran `CMake` will not get picked up
+* When you ensure that only files you want are added. Globbing may pick up stray files that you do not want.
+
+In order to work around the first issue, you can simply `touch` the `CMakeLists.txt` that does the glob, either by using the touch command or by writing the file with no changes. This will force `CMake` to re-run and pick up the new file.
+
+To fix the second problem you can organize your code carefully into directories, which is what you probably do anyway. In the worst case, you can use the `list(REMOVE_ITEM)` command to clean up the globbed list of files:
+
+```cmake
+file(GLOB to_remove file_to_remove.cpp)
+list(REMOVE_ITEM list ${to_remove})
+```
+
+The only real situation where this can bite you is if you are using something like `git-bisect` to try older versions of your code in the same build directory. In that case you may have to clean and compile more than necessary to ensure you get the right files in the list. This is such a corner case, and one where you already are on your toes, that it isn't really an issue.
+
+=== Another way to specify the source file
+
+What you can do instead of the globbing or add the file in the `add_*` commands, is making use of the `set()` command like the following:
+
+```cmake
+
+```
